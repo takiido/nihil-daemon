@@ -7,7 +7,10 @@ use tokio::sync::mpsc;
 async fn main() {
     let (tx, rx) = mpsc::channel(32);
 
-    tokio::spawn(providers::dummy::watch(tx.clone()));
+    let local = tokio::task::LocalSet::new();
 
-    dbus::run(rx).await;
+    local.spawn_local(providers::dummy::watch(tx.clone()));
+    local.spawn_local(providers::backlight::watch(tx.clone()));
+
+    local.run_until(dbus::run(rx)).await;
 }
