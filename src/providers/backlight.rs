@@ -29,8 +29,10 @@ pub enum BacklightError {
 const BACKLIGHT_PATH: &str = "/sys/class/backlight/";
 
 pub async fn watch(tx: Sender<ShellEvent>) {
-    if let Err(e) = watch_inner(tx).await {
-        eprintln!("Backlight watcher stopped: {e}");
+    match watch_inner(tx).await {
+        Ok(_) => {}
+        Err(BacklightError::ChannelClosed) => {},
+        Err(e) => eprintln!("Backlight watcher stopped: {e}"),
     }
 }
 
@@ -95,25 +97,15 @@ fn get_devices() -> Result<Vec<String>, BacklightError> {
         .collect()
 }
 
-fn get_max_brightness(device: &str) -> Result<u32, BacklightError> {
-    fs::read_to_string(format!("{}{}/max_brightness", BACKLIGHT_PATH, device))?
-        .trim()
-        .parse::<u32>()
-        .map_err(Into::into)
-}
-
-fn get_current_brightness(device: &str) -> Result<u32, BacklightError> {
-    Ok(fs::read_to_string(format!("{}{}/brightness", BACKLIGHT_PATH, device))?
-        .trim()
-        .parse::<u32>()?
-    )
-}
-
 fn get_brightness(device: &str) -> Result<u32, BacklightError> {
-    let max_brightness = get_max_brightness(device)?;
-    let current_brightness = get_current_brightness(device)?;
+    let max = fs::read_to_string(format!("{}{}/max_brightness", BACKLIGHT_PATH, device))?
+        .trim()
+        .parse::<u32>()?;
+    let current = fs::read_to_string(format!("{}{}/brightness", BACKLIGHT_PATH, device))?
+        .trim()
+        .parse::<u32>()?;
 
-    let fmt_value = (current_brightness as f32 / max_brightness as f32 * 100.0).round() as u32;
+    let fmt_value = (current as f32 / max as f32 * 100.0).round() as u32;
     Ok(fmt_value)
 }
 
