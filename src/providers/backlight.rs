@@ -1,5 +1,4 @@
 use std::fs;
-use std::sync::OnceLock;
 use std::process::Command;
 use udev::MonitorBuilder;
 use tokio::io::unix::AsyncFd;
@@ -28,10 +27,6 @@ pub enum BacklightError {
 ///
 /// const
 const BACKLIGHT_PATH: &str = "/sys/class/backlight/";
-
-/// A static constant of the type `OnceLock<u32>` that is used to initialize and store
-/// the maximum brightness value only once during the program's execution.
-static MAX_BRIGHTNESS : OnceLock<u32> = OnceLock::new();
 
 pub async fn watch(tx: Sender<ShellEvent>) {
     let monitor = match MonitorBuilder::new()
@@ -87,23 +82,16 @@ pub async fn watch(tx: Sender<ShellEvent>) {
 }
 
 fn get_devices() -> Result<Vec<String>, BacklightError> {
-    let mut devices: Vec<String> = Vec::new();
-    for entry in fs::read_dir(BACKLIGHT_PATH)? {
-        devices.push(entry?.file_name().display().to_string());
-    }
-
-    Ok(devices)
+    fs::read_dir(BACKLIGHT_PATH)?
+        .map(|e| Ok(e?.file_name().to_string_lossy().into_owned()))
+        .collect()
 }
 
 fn get_max_brightness(device: &str) -> Result<u32, BacklightError> {
-    if let Some(&v) = MAX_BRIGHTNESS.get() {
-        return Ok(v);
-    }
-    let v = fs::read_to_string(format!("{}{}/max_brightness", BACKLIGHT_PATH, device))?
+    fs::read_to_string(format!("{}{}/max_brightness", BACKLIGHT_PATH, device))?
         .trim()
-        .parse::<u32>()?;
-    MAX_BRIGHTNESS.set(v).ok();
-    Ok(v)
+        .parse::<u32>()
+        .map_err(Into::into)
 }
 
 fn get_current_brightness(device: &str) -> Result<u32, BacklightError> {
