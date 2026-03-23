@@ -7,14 +7,14 @@ use super::{BacklightEvent, ShellEvent};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BacklightError {
-    #[error("no backlight device found")]
-    NoDevice,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("parse error: {0}")]
     Parse(#[from] std::num::ParseIntError),
     #[error("failed to set brightness")]
     SetBrightness,
+    #[error("channel closed")]
+    ChannelClosed,
 }
 
 /// The constant `BACKLIGHT_PATH` represents the file system path to the directory
@@ -29,34 +29,33 @@ pub enum BacklightError {
 const BACKLIGHT_PATH: &str = "/sys/class/backlight/";
 
 pub async fn watch(tx: Sender<ShellEvent>) {
-    let monitor = match MonitorBuilder::new()
+    if let Err(e) = watch_inner(tx).await {
+        eprintln!("Backlight watcher stopped: {e}");
+    }
+}
+
+async fn watch_inner(tx: Sender<ShellEvent>) -> Result<(), BacklightError> {
+    let monitor = MonitorBuilder::new()
         .and_then(|m| m.match_subsystem("backlight"))
-        .and_then(|m| m.listen())
-    {
-        Ok(m) => m,
-        Err(e) => { eprintln!("Backlight monitor error: {e}"); return; }
-    };
+        .and_then(|m| m.listen())?;
 
-    let async_fd = match AsyncFd::new(monitor) {
-        Ok(fd) => fd,
-        Err(e) => { eprintln!("Backlight async fd error: {e}"); return; }
-    };
+    let async_fd = AsyncFd::new(monitor)?;
 
-    match get_devices() {
-        Ok(devices) => {
-            for device in devices {
-                tx.send(ShellEvent::Backlight(BacklightEvent::DeviceAdded(device.clone()))).await.unwrap();
-                match get_brightness(&device) {
-                    Ok(value) => { tx.send(ShellEvent::Backlight(BacklightEvent::Brightness { device, value })).await.unwrap(); }
-                    Err(e) => { eprintln!("Brightness error: {e}"); }
-                }
+    let devices = get_devices()?;
+    for device in devices {
+        tx.send(ShellEvent::Backlight(BacklightEvent::DeviceAdded(device.clone()))).await
+            .map_err(|_| BacklightError::ChannelClosed)?;
+        match get_brightness(&device) {
+            Ok(value) => {
+                tx.send(ShellEvent::Backlight(BacklightEvent::Brightness { device, value })).await
+                    .map_err(|_| BacklightError::ChannelClosed)?;
             }
+            Err(e) => eprintln!("Brightness error: {e}"),
         }
-        Err(e) => { eprintln!("Backlight devices error: {e}"); return; }
     }
 
     loop {
-        let mut guard = async_fd.readable().await.unwrap();
+        let mut guard = async_fd.readable().await?;
         guard.clear_ready();
 
         for event in async_fd.get_ref().iter() {
@@ -69,12 +68,21 @@ pub async fn watch(tx: Sender<ShellEvent>) {
             match action.to_str() {
                 Some("change") => {
                     match get_brightness(&name) {
-                        Ok(value) => { tx.send(ShellEvent::Backlight(BacklightEvent::Brightness { device: name, value })).await.unwrap(); }
-                        Err(e) => { eprintln!("Brightness error: {e}"); }
+                        Ok(value) => {
+                            tx.send(ShellEvent::Backlight(BacklightEvent::Brightness { device: name, value })).await
+                                .map_err(|_| BacklightError::ChannelClosed)?;
+                        }
+                        Err(e) => eprintln!("Brightness error: {e}"),
                     }
                 }
-                Some("add") => { tx.send(ShellEvent::Backlight(BacklightEvent::DeviceAdded(name))).await.unwrap(); }
-                Some("remove") => { tx.send(ShellEvent::Backlight(BacklightEvent::DeviceRemoved(name))).await.unwrap(); }
+                Some("add") => {
+                    tx.send(ShellEvent::Backlight(BacklightEvent::DeviceAdded(name))).await
+                        .map_err(|_| BacklightError::ChannelClosed)?;
+                }
+                Some("remove") => {
+                    tx.send(ShellEvent::Backlight(BacklightEvent::DeviceRemoved(name))).await
+                        .map_err(|_| BacklightError::ChannelClosed)?;
+                }
                 _ => {}
             }
         }
