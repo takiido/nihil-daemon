@@ -35,10 +35,10 @@ pub async fn run(mut rx: Receiver<ShellEvent>) {
     while let Some(event) = rx.recv().await {
         match event {
             ShellEvent::Dummy(n) => {
-                println!("Emitting: {n}");
-                NihilShell::dummy_updated(iface.signal_emitter(), n)
-                    .await
-                    .unwrap();
+                // println!("Emitting: {n}");
+                // NihilShell::dummy_updated(iface.signal_emitter(), n)
+                //     .await
+                //     .unwrap();
             }
 
             ShellEvent::Backlight(backlight_event) => match backlight_event {
