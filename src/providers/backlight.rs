@@ -98,15 +98,19 @@ fn get_devices() -> Result<Vec<String>, BacklightError> {
 }
 
 fn get_brightness(device: &str) -> Result<u32, BacklightError> {
-    let max = fs::read_to_string(format!("{}{}/max_brightness", BACKLIGHT_PATH, device))?
+    let max = fs::read_to_string(sysfs_path(device, "max_brightness"))?
         .trim()
         .parse::<u32>()?;
-    let current = fs::read_to_string(format!("{}{}/brightness", BACKLIGHT_PATH, device))?
+    let current = fs::read_to_string(sysfs_path(device, "brightness"))?
         .trim()
         .parse::<u32>()?;
 
     let fmt_value = (current as f32 / max as f32 * 100.0).round() as u32;
     Ok(fmt_value)
+}
+
+fn sysfs_path(device: &str, file: &str) -> std::path::PathBuf {
+    std::path::Path::new(BACKLIGHT_PATH).join(device).join(file)
 }
 
 pub fn set_brightness(brightness: u32) -> Result<(), BacklightError> {
