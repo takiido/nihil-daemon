@@ -1,6 +1,7 @@
 use tokio::sync::mpsc::Receiver;
 use zbus::{connection, interface, object_server::SignalEmitter};
 use crate::providers::{BacklightEvent, ShellEvent};
+use crate::system_features::SystemFeatures;
 
 struct NihilShell;
 
@@ -14,6 +15,10 @@ impl NihilShell {
     async fn backlight_device_removed(ctx: &SignalEmitter<'_>, device: String) -> zbus::Result<()>;
     #[zbus(signal)]
     async fn backlight_updated(ctx: &SignalEmitter<'_>, device: String, value: u32) -> zbus::Result<()>;
+
+    async fn get_features(&self) -> SystemFeatures {
+        SystemFeatures::detect()
+    }
 }
 
 pub async fn run(mut rx: Receiver<ShellEvent>) {
@@ -35,10 +40,10 @@ pub async fn run(mut rx: Receiver<ShellEvent>) {
     while let Some(event) = rx.recv().await {
         match event {
             ShellEvent::Dummy(n) => {
-                // println!("Emitting: {n}");
-                // NihilShell::dummy_updated(iface.signal_emitter(), n)
-                //     .await
-                //     .unwrap();
+                println!("Emitting: {n}");
+                NihilShell::dummy_updated(iface.signal_emitter(), n)
+                    .await
+                    .unwrap();
             }
 
             ShellEvent::Backlight(backlight_event) => match backlight_event {

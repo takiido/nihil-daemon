@@ -1,5 +1,7 @@
 mod dbus;
 mod providers;
+mod system_features;
+mod paths;
 
 use tokio::sync::mpsc;
 
