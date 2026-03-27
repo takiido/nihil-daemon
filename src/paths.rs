@@ -1,0 +1,1 @@
+pub const BACKLIGHT_PATH: &str = "/sys/class/backlight/";

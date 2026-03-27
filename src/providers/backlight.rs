@@ -4,6 +4,7 @@ use udev::MonitorBuilder;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::Sender;
 use super::{BacklightEvent, ShellEvent};
+use crate::paths;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BacklightError {
@@ -16,17 +17,6 @@ pub enum BacklightError {
     #[error("channel closed")]
     ChannelClosed,
 }
-
-/// The constant `BACKLIGHT_PATH` represents the file system path to the directory
-/// containing information about the backlight devices on a Linux-based system.
-///
-/// # Note
-/// - The availability of this path depends on the system's configuration and
-///   whether it supports backlight control.
-/// - Make sure the program has the required permissions to access files in this directory.
-///
-/// const
-const BACKLIGHT_PATH: &str = "/sys/class/backlight/";
 
 pub async fn watch(tx: Sender<ShellEvent>) {
     match watch_inner(tx).await {
@@ -92,7 +82,7 @@ async fn watch_inner(tx: Sender<ShellEvent>) -> Result<(), BacklightError> {
 }
 
 fn get_devices() -> Result<Vec<String>, BacklightError> {
-    fs::read_dir(BACKLIGHT_PATH)?
+    fs::read_dir(paths::BACKLIGHT_PATH)?
         .map(|e| Ok(e?.file_name().to_string_lossy().into_owned()))
         .collect()
 }
@@ -110,7 +100,7 @@ fn get_brightness(device: &str) -> Result<u32, BacklightError> {
 }
 
 fn sysfs_path(device: &str, file: &str) -> std::path::PathBuf {
-    std::path::Path::new(BACKLIGHT_PATH).join(device).join(file)
+    std::path::Path::new(paths::BACKLIGHT_PATH).join(device).join(file)
 }
 
 pub fn set_brightness(brightness: u32) -> Result<(), BacklightError> {
